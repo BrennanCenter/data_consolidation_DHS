@@ -2410,6 +2410,36 @@
     </div>
 <!-- JAVASCRIPT LOGIC -->
 <script>
+    /* === PINNED / IFRAME-DRIVEN SCROLL (Viz 1 embed only) ===
+       In a cross-origin iframe this embed can't drive the parent page's scroll, so
+       a "pinned mode" lets the parent report scroll progress (0..1) via postMessage;
+       we translate that into this document's own scroll, and the existing step
+       machinery runs while the map pins to the iframe viewport. Enabled by the
+       viz-1-embed-pinned.html build (window.__VIZ1_PINNED__) or ?pinned=1 — inert
+       otherwise, so the standalone embeds and full page are unaffected. The parent
+       sets pointer-events:none on the iframe so wheel/touch reach the page, not us. */
+    (function () {
+        var enabled = (typeof window.__VIZ1_PINNED__ !== 'undefined' && window.__VIZ1_PINNED__)
+                      || /[?&]pinned=1\b/.test(window.location.search);
+        if (!enabled) return;
+        // Hide the scrollbar but keep programmatic scrolling working.
+        var hideBar = document.createElement('style');
+        hideBar.textContent = 'html{scrollbar-width:none}html::-webkit-scrollbar{width:0;height:0;display:none}';
+        (document.head || document.documentElement).appendChild(hideBar);
+        var lastP = -1;
+        window.addEventListener('message', function (e) {
+            var d = e.data;
+            if (!d || d.type !== 'viz1-progress' || typeof d.progress !== 'number') return;
+            var p = Math.max(0, Math.min(1, d.progress));
+            if (Math.abs(p - lastP) < 0.0004) return;
+            lastP = p;
+            var max = document.documentElement.scrollHeight - window.innerHeight;
+            window.scrollTo(0, p * max);
+        }, false);
+        // Announce readiness so the parent can sync the current progress on load.
+        try { window.parent.postMessage({ type: 'viz1-ready' }, '*'); } catch (err) {}
+    }());
+
     document.addEventListener("DOMContentLoaded", function() {
 
         // Single source of truth for the responsive breakpoint. Always call at

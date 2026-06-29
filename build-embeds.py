@@ -8,7 +8,7 @@ hardcoded ranges. For each viz, finds the opening comment marker and tracks
 import re
 from pathlib import Path
 
-PROJECT = Path("/Users/nassereledroos/_dev/bcj/data-integration")
+PROJECT = Path(__file__).resolve().parent
 SRC = PROJECT / "index.html"
 
 
@@ -70,7 +70,7 @@ def build_embeds():
 </style>
 """
 
-    def assemble(name: str, viz_block: str, body_class: str, label: str, needs_maplibre: bool):
+    def assemble(name: str, viz_block: str, body_class: str, label: str, needs_maplibre: bool, pinned: bool = False):
         head_with_style = head.replace("</head>", embed_style + "</head>", 1)
         if not needs_maplibre:
             # MapLibre GL (~200KB JS + CSS) is only used by the Viz 1 map.
@@ -88,10 +88,15 @@ def build_embeds():
             if 'maplibre-gl.js' in head_with_style or 'maplibre-gl.css' in head_with_style:
                 raise RuntimeError(f"{name}: MapLibre strip failed")
         body_open_tag = f'<body class="embed-mode {body_class}">\n'
+        # The *-pinned build sets a flag (read by the pinned-mode script) so the embed
+        # advances from the parent's postMessage scroll progress instead of its own
+        # scroll. Must run before the main script — inject right after <body>.
+        pinned_flag = "<script>window.__VIZ1_PINNED__=true;</script>\n" if pinned else ""
         out = (
             head_with_style
             + "\n"
             + body_open_tag
+            + pinned_flag
             + viz_block
             + "\n"
             + script_to_end
@@ -105,6 +110,7 @@ def build_embeds():
         print(f"Wrote {name} ({len(out):,} bytes) — {label}")
 
     assemble("viz-1-embed.html", viz1, "embed-viz-1", "scrollytelling map", needs_maplibre=True)
+    assemble("viz-1-embed-pinned.html", viz1, "embed-viz-1", "scrollytelling map (pinned/iframe mode)", needs_maplibre=True, pinned=True)
     assemble("viz-2-embed.html", viz2, "embed-viz-2", "Sankey diagram", needs_maplibre=False)
     assemble("viz-3-embed.html", viz3, "embed-viz-3", "vendor matrix", needs_maplibre=False)
 
