@@ -1,0 +1,19 @@
+# macOS
+.DS_Store
+._*
+
+# Editor directories and files
+.vscode/
+.idea/
+*.swp
+*~
+
+# Python
+__pycache__/
+*.pyc
+
+# Microsoft Office lock/owner files (created while a doc is open)
+~$*
+
+# Local tooling working dir (not project code)
+.superpowers/
