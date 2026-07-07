@@ -305,6 +305,7 @@
         }
         .matrix-vendor-row:hover {
             background: #f9fafb;
+            cursor: pointer;
         }
         .matrix-vendor-row td {
             padding: 6px 4px;
@@ -378,9 +379,6 @@
         @keyframes matrixDetailFade {
             from { opacity: 0; }
             to { opacity: 1; }
-        }
-        .matrix-vendor-row:hover {
-            cursor: pointer;
         }
         .matrix-note {
             font-size: 10px;
@@ -650,48 +648,6 @@
         .map-data-overlay .data-value {
             color: var(--text-main);
             margin-top: 4px;
-        }
-
-        /* Person legend */
-        .person-legend {
-            position: absolute;
-            bottom: 20px;
-            left: 20px;
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 0;
-            padding: 12px 15px;
-            font-family: 'Benton Sans', 'Helvetica Neue', sans-serif;
-            font-size: 0.8rem;
-            z-index: 1000;
-            opacity: 0;
-            transition: opacity 0.5s;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-        }
-        .person-legend.visible { opacity: 1; }
-        .person-legend-title {
-            font-weight: 700;
-            color: var(--bc-blue);
-            margin-bottom: 8px;
-            font-size: 0.75rem;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        .person-legend-item {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-bottom: 5px;
-        }
-        .person-legend-item:last-child { margin-bottom: 0; }
-        .person-legend-dot {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            flex-shrink: 0;
-        }
-        .person-legend-label {
-            color: var(--text-main);
-            font-size: 0.75rem;
         }
 
         /* Geofence circle animation */
@@ -1690,16 +1646,12 @@
         }
         .sankey-legend-dot.federal { background: #003A63; }
         .sankey-legend-dot.state { background: #9E0B0F; }
-        .sankey-legend-divider { width: 1px; height: 18px; background: #cbd5e1; margin: 0 2px; }
+        /* height 16px + margin 0 2px preserves the previous two-rule cascade result */
+        .sankey-legend-divider { width: 1px; height: 16px; background: #cbd5e1; margin: 0 2px; }
         .sankey-legend-swatch { width: 12px; height: 12px; border: 2px solid; border-radius: 0; box-sizing: border-box; }
         .sankey-legend-swatch.blocked { border-color: #dc2626; }
         .sankey-legend-swatch.partial { border-color: #d97706; }
         @media (max-width: 600px) { .sankey-legend-divider { display: none; } }
-        .sankey-legend-divider {
-            width: 1px;
-            height: 16px;
-            background: #cbd5e1;
-        }
         .sankey-legend-new-badge {
             font-size: 8px;
             text-transform: uppercase;
@@ -2654,6 +2606,60 @@
                 maxZoom: 19
             });
 
+            // === PROJECTION CACHE ===
+            // The point-cloud draw functions below project 1,000+ coords per call, and
+            // the pulse/constellation loops call them every animation frame. The camera
+            // is fully programmatic (interactive: false), so between camera moves those
+            // projections are static: bump a revision counter on every 'move'/'resize'
+            // and reuse the previous frame's bounds + projected points while the
+            // revision is unchanged. During flyTo/easeTo the counter bumps each frame,
+            // so caches recompute exactly as the uncached code did — identical behavior
+            // while the camera moves, near-free while it's parked.
+            var camRev = 0;
+            map.on('move', function() { camRev++; });
+            map.on('resize', function() { camRev++; });
+
+            var cachedBounds = { rev: -1, val: null };
+            function getBoundsCached() {
+                if (cachedBounds.rev !== camRev) {
+                    cachedBounds.val = map.getBounds();
+                    cachedBounds.rev = camRev;
+                }
+                return cachedBounds.val;
+            }
+
+            // Per-dataset projected-point caches: pts entries are {x, y, src}.
+            // filtered=true drops out-of-view points, matching the previous inline
+            // bounds checks in each draw function.
+            var projCaches = {};
+            function ptLat(p) { return p.lat; }
+            function ptLng(p) { return p.lng; }
+            function arrLat(c) { return c[0]; }
+            function arrLng(c) { return c[1]; }
+            function projectPoints(key, data, latOf, lngOf, filtered) {
+                var cache = projCaches[key];
+                if (cache && cache.rev === camRev) return cache.pts;
+                var pts = [];
+                if (filtered) {
+                    var b = getBoundsCached();
+                    var south = b.getSouth(), north = b.getNorth();
+                    var west = b.getWest(), east = b.getEast();
+                    for (var i = 0; i < data.length; i++) {
+                        var lat = latOf(data[i]), lng = lngOf(data[i]);
+                        if (lat < south || lat > north || lng < west || lng > east) continue;
+                        var p = map.project([lng, lat]);
+                        pts.push({ x: p.x, y: p.y, src: data[i] });
+                    }
+                } else {
+                    for (var j = 0; j < data.length; j++) {
+                        var q = map.project([lngOf(data[j]), latOf(data[j])]);
+                        pts.push({ x: q.x, y: q.y, src: data[j] });
+                    }
+                }
+                projCaches[key] = { rev: camRev, pts: pts };
+                return pts;
+            }
+
             // Hide non-road labels — keep street names, hide place/area labels
             var roadLabelIds = ['highway-name-path', 'highway-name-minor', 'highway-name-major'];
             map.on('styledata', function() {
@@ -2958,14 +2964,18 @@
                         if (shadow) shadow.setAttribute('stroke-opacity', '0');
                         if (line) line.setAttribute('stroke-opacity', '0');
                         // Clean up after transition
-                        (function(el, vid, shadow, line) {
+                        (function(el, vid, shadow, line, key) {
                             setTimeout(function() {
-                                el.style.display = 'none';
-                                if (vid) vid.pause();
+                                // Removing the captured (old) connector elements is always safe,
+                                // but el/vid are SHARED across stages — if the label was re-shown
+                                // within the 350ms (fast scroll back), don't hide it again.
                                 if (shadow) shadow.remove();
                                 if (line) line.remove();
+                                if (activeLabels.has(key)) return;
+                                el.style.display = 'none';
+                                if (vid) vid.pause();
                             }, 350);
-                        })(el, vid, shadow, line);
+                        })(el, vid, shadow, line, key);
                     } else {
                         el.style.display = 'none';
                         if (inner) inner.classList.remove('visible');
@@ -3292,76 +3302,59 @@
             }
 
             function drawFoleyPoints() {
+                // Note: deliberately unfiltered (draws off-view points too), as before
+                var pts = projectPoints('foley', foleyPoints, ptLat, ptLng, false);
                 ctx.save();
                 ctx.fillStyle = DOT_COLOR;
-                foleyPoints.forEach(function(point) {
-                    const pixel = latLngToPixel([point.lat, point.lng]);
+                pts.forEach(function(p) {
                     ctx.globalAlpha = 0.3;
                     ctx.beginPath();
-                    ctx.arc(pixel.x, pixel.y, 8, 0, Math.PI * 2);
+                    ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
                     ctx.fill();
                 });
                 ctx.restore();
             }
 
             function drawAllPointsDim() {
-                const bounds = map.getBounds();
-                const south = bounds.getSouth(), north = bounds.getNorth();
-                const west = bounds.getWest(), east = bounds.getEast();
-
+                var pts = projectPoints('loc', locationData, ptLat, ptLng, true);
                 ctx.save();
                 ctx.fillStyle = DOT_COLOR;
                 // Draw each dot individually so overlapping dots accumulate
                 // opacity, creating a natural heatmap effect at clusters
-                locationData.forEach(function(point) {
-                    if (point.lat < south || point.lat > north ||
-                        point.lng < west || point.lng > east) return;
-                    const pixel = latLngToPixel([point.lat, point.lng]);
+                pts.forEach(function(p) {
                     ctx.globalAlpha = 0.35;
                     ctx.beginPath();
-                    ctx.arc(pixel.x, pixel.y, 6, 0, Math.PI * 2);
+                    ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
                     ctx.fill();
                 });
                 ctx.restore();
             }
 
             function drawAllPoints() {
-                const bounds = map.getBounds();
-                const south = bounds.getSouth(), north = bounds.getNorth();
-                const west = bounds.getWest(), east = bounds.getEast();
-
+                var pts = projectPoints('loc', locationData, ptLat, ptLng, true);
                 ctx.save();
                 ctx.globalAlpha = 0.6;
                 ctx.fillStyle = DOT_COLOR;
                 ctx.beginPath();
-                locationData.forEach(function(point) {
-                    if (point.lat < south || point.lat > north ||
-                        point.lng < west || point.lng > east) return;
-                    const pixel = latLngToPixel([point.lat, point.lng]);
-                    ctx.moveTo(pixel.x + 2.5, pixel.y);
-                    ctx.arc(pixel.x, pixel.y, 2.5, 0, Math.PI * 2);
+                pts.forEach(function(p) {
+                    ctx.moveTo(p.x + 2.5, p.y);
+                    ctx.arc(p.x, p.y, 2.5, 0, Math.PI * 2);
                 });
                 ctx.fill();
                 ctx.restore();
             }
 
             function drawHomeHighlight() {
-                const bounds = map.getBounds();
-                const south = bounds.getSouth(), north = bounds.getNorth();
-                const west = bounds.getWest(), east = bounds.getEast();
-
+                var pts = projectPoints('loc', locationData, ptLat, ptLng, true);
                 ctx.save();
                 ctx.fillStyle = DOT_COLOR;
-                locationData.forEach(function(point) {
-                    if (point.lat < south || point.lat > north ||
-                        point.lng < west || point.lng > east) return;
-                    const pixel = latLngToPixel([point.lat, point.lng]);
-                    const isHome = Math.abs(point.lng - HOME_CENTER[1]) < 0.005 &&
-                                   Math.abs(point.lat - HOME_CENTER[0]) < 0.005;
+                pts.forEach(function(p) {
+                    const isHome = Math.abs(p.src.lng - HOME_CENTER[1]) < 0.005 &&
+                                   Math.abs(p.src.lat - HOME_CENTER[0]) < 0.005;
                     // Home points: larger, brighter. Others: heatmap style.
                     ctx.globalAlpha = isHome ? 0.25 : 0.08;
                     ctx.beginPath();
-                    ctx.arc(pixel.x, pixel.y, isHome ? 7 : 5, 0, Math.PI * 2);
+                    ctx.arc(p.x, p.y, isHome ? 7 : 5, 0, Math.PI * 2);
                     ctx.fill();
                 });
                 ctx.restore();
@@ -3371,57 +3364,47 @@
             var COLOR_ALPR = '#3b82f6';
 
             function drawCCTV(alpha) {
-                var bounds = map.getBounds();
-                var south = bounds.getSouth(), north = bounds.getNorth();
-                var west = bounds.getWest(), east = bounds.getEast();
+                var pts = projectPoints('cctv', CCTV_DATA, arrLat, arrLng, true);
                 ctx.save();
                 ctx.fillStyle = COLOR_CCTV;
-                CCTV_DATA.forEach(function(c) {
-                    if (c[0] < south || c[0] > north || c[1] < west || c[1] > east) return;
-                    var pixel = latLngToPixel([c[0], c[1]]);
-                    ctx.globalAlpha = (alpha !== undefined ? alpha : 0.7) * Math.min(1, 0.4 + (c[2] / 25));
-                    ctx.fillRect(pixel.x - 3, pixel.y - 3, 6, 6);
+                pts.forEach(function(p) {
+                    ctx.globalAlpha = (alpha !== undefined ? alpha : 0.7) * Math.min(1, 0.4 + (p.src[2] / 25));
+                    ctx.fillRect(p.x - 3, p.y - 3, 6, 6);
                 });
                 ctx.restore();
             }
 
             function drawCCTVFalling(progress, alpha) {
-                var bounds = map.getBounds();
+                var pts = projectPoints('cctv', CCTV_DATA, arrLat, arrLng, true);
+                var bounds = getBoundsCached();
                 var south = bounds.getSouth(), north = bounds.getNorth();
-                var west = bounds.getWest(), east = bounds.getEast();
                 ctx.save();
                 ctx.fillStyle = COLOR_CCTV;
                 var latRange = north - south;
-                CCTV_DATA.forEach(function(c, i) {
-                    if (c[0] < south || c[0] > north || c[1] < west || c[1] > east) return;
-                    var pixel = latLngToPixel([c[0], c[1]]);
+                pts.forEach(function(p) {
                     // Wave: top (high lat) enters first, bottom last — 0.7 spread
-                    var delay = latRange > 0 ? (1 - (c[0] - south) / latRange) * 0.7 : 0;
+                    var delay = latRange > 0 ? (1 - (p.src[0] - south) / latRange) * 0.7 : 0;
                     var t = Math.max(0, Math.min(1, (progress - delay) / 0.3));
                     var ease = t < 1 ? t * t * (3 - 2 * t) : 1;
                     var yOffset = (1 - ease) * -300;
-                    ctx.globalAlpha = ease * (alpha !== undefined ? alpha : 0.7) * Math.min(1, 0.4 + (c[2] / 25));
-                    ctx.fillRect(pixel.x - 3, pixel.y + yOffset - 3, 6, 6);
+                    ctx.globalAlpha = ease * (alpha !== undefined ? alpha : 0.7) * Math.min(1, 0.4 + (p.src[2] / 25));
+                    ctx.fillRect(p.x - 3, p.y + yOffset - 3, 6, 6);
                 });
                 ctx.restore();
             }
 
             function drawALPR(alpha) {
-                var bounds = map.getBounds();
-                var south = bounds.getSouth(), north = bounds.getNorth();
-                var west = bounds.getWest(), east = bounds.getEast();
+                var pts = projectPoints('alpr', ALPR_DATA, arrLat, arrLng, true);
                 ctx.save();
                 ctx.fillStyle = COLOR_ALPR;
-                ALPR_DATA.forEach(function(c) {
-                    if (c[0] < south || c[0] > north || c[1] < west || c[1] > east) return;
-                    var pixel = latLngToPixel([c[0], c[1]]);
+                pts.forEach(function(p) {
                     ctx.globalAlpha = alpha !== undefined ? alpha : 0.85;
                     ctx.beginPath();
                     var s = 4.5;
-                    ctx.moveTo(pixel.x, pixel.y - s);
-                    ctx.lineTo(pixel.x + s, pixel.y);
-                    ctx.lineTo(pixel.x, pixel.y + s);
-                    ctx.lineTo(pixel.x - s, pixel.y);
+                    ctx.moveTo(p.x, p.y - s);
+                    ctx.lineTo(p.x + s, p.y);
+                    ctx.lineTo(p.x, p.y + s);
+                    ctx.lineTo(p.x - s, p.y);
                     ctx.closePath();
                     ctx.fill();
                 });
@@ -3429,26 +3412,24 @@
             }
 
             function drawALPRFalling(progress, alpha) {
-                var bounds = map.getBounds();
+                var pts = projectPoints('alpr', ALPR_DATA, arrLat, arrLng, true);
+                var bounds = getBoundsCached();
                 var south = bounds.getSouth(), north = bounds.getNorth();
-                var west = bounds.getWest(), east = bounds.getEast();
                 ctx.save();
                 ctx.fillStyle = COLOR_ALPR;
                 var latRange = north - south;
-                ALPR_DATA.forEach(function(c, i) {
-                    if (c[0] < south || c[0] > north || c[1] < west || c[1] > east) return;
-                    var pixel = latLngToPixel([c[0], c[1]]);
-                    var delay = latRange > 0 ? (1 - (c[0] - south) / latRange) * 0.7 : 0;
+                pts.forEach(function(p) {
+                    var delay = latRange > 0 ? (1 - (p.src[0] - south) / latRange) * 0.7 : 0;
                     var t = Math.max(0, Math.min(1, (progress - delay) / 0.3));
                     var ease = t < 1 ? t * t * (3 - 2 * t) : 1;
                     var yOffset = (1 - ease) * -300;
                     ctx.globalAlpha = ease * (alpha !== undefined ? alpha : 0.85);
                     ctx.beginPath();
                     var s = 4.5;
-                    ctx.moveTo(pixel.x, pixel.y + yOffset - s);
-                    ctx.lineTo(pixel.x + s, pixel.y + yOffset);
-                    ctx.lineTo(pixel.x, pixel.y + yOffset + s);
-                    ctx.lineTo(pixel.x - s, pixel.y + yOffset);
+                    ctx.moveTo(p.x, p.y + yOffset - s);
+                    ctx.lineTo(p.x + s, p.y + yOffset);
+                    ctx.lineTo(p.x, p.y + yOffset + s);
+                    ctx.lineTo(p.x - s, p.y + yOffset);
                     ctx.closePath();
                     ctx.fill();
                 });
@@ -3457,23 +3438,18 @@
 
             function drawAllPointsSmall(alpha, radius) {
                 var r = radius !== undefined ? radius : 3;
-                var bounds = map.getBounds();
-                var south = bounds.getSouth(), north = bounds.getNorth();
-                var west = bounds.getWest(), east = bounds.getEast();
+                var pts = projectPoints('loc', locationData, ptLat, ptLng, true);
                 var seen = {};
                 var cellSize = 4;
                 ctx.save();
                 ctx.fillStyle = DOT_COLOR;
-                locationData.forEach(function(point) {
-                    if (point.lat < south || point.lat > north ||
-                        point.lng < west || point.lng > east) return;
-                    var pixel = latLngToPixel([point.lat, point.lng]);
-                    var cellKey = Math.floor(pixel.x / cellSize) + ',' + Math.floor(pixel.y / cellSize);
+                pts.forEach(function(p) {
+                    var cellKey = Math.floor(p.x / cellSize) + ',' + Math.floor(p.y / cellSize);
                     if (seen[cellKey]) return;
                     seen[cellKey] = true;
                     ctx.globalAlpha = alpha !== undefined ? alpha : 0.5;
                     ctx.beginPath();
-                    ctx.arc(pixel.x, pixel.y, r, 0, Math.PI * 2);
+                    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
                     ctx.fill();
                 });
                 ctx.restore();
@@ -3575,6 +3551,12 @@
 
                 // Clear layers
                 polygonLayer.clearLayers();
+                // Restore home-label defaults on EVERY stage change. Step 4 overrides these
+                // (zoom-18 view: card above polygon, line into the dot cluster) inside its
+                // async animation chain; restoring only in step 5 left them stale if the
+                // scroll skipped 5. Step 4 re-applies its override after this runs.
+                POLYGONS['home'].lineAnchor = [0, 20];
+                POLYGONS['home'].lineTarget = null;
                 // Animate labels out when leaving step 5 (A Life Exposed) for step 6+
                 hideAllLabels(previousStage === 5 && stage >= 6);
                 // Force-clear any lingering SVG connector lines (fast scroll safety)
@@ -3877,10 +3859,7 @@
                         hideVideo();
                         pulsingOutlineKey = null;
                         hideLegend();
-                        // Restore home label defaults (step 4 overrides for zoom 18)
-                        
-                        POLYGONS['home'].lineAnchor = [0, 20];
-                        POLYGONS['home'].lineTarget = null;
+                        // (home-label defaults are restored centrally at the top of renderStage)
                         // Labels always hidden via styledata handler
                         if (!isMapAtView(NYC_CENTER, 13)) canvas.style.opacity = '0';
                         smoothMapTransition(NYC_CENTER, 13, function() {
@@ -5499,6 +5478,7 @@
                 var x = e.clientX + 15;
                 var y = e.clientY + 15;
                 if (x + 260 > window.innerWidth) x = e.clientX - 275;
+                if (x < 8) x = 8; // clamp left edge too — on narrow windows the flip above can go negative
                 tooltip.style.left = x + 'px';
                 tooltip.style.top = y + 'px';
                 tooltip.style.opacity = '1';
