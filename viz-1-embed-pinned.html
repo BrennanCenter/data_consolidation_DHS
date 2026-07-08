@@ -1210,12 +1210,17 @@
         /* Highlighted text in cards — background sweep */
         .viz1-highlight {
             /* BCJ brand yellow highlighter (#FFCF01), per Alden 6/16 */
-            background: linear-gradient(to right, rgba(255, 207, 1, 0.55) 50%, transparent 50%);
+            background: linear-gradient(to right, #FFCF01 50%, transparent 50%);
             background-size: 200% 100%;
             background-position: right;
             transition: background-position 0.6s ease 0.7s;
-            padding: 1px 3px;
-            margin: -1px -3px;
+            /* No horizontal padding/margin: an inline run only applies those at its
+               start/end, so a multi-line highlight got a 3px overshoot on the first
+               line only. clone gives every wrapped fragment identical decoration. */
+            padding: 1px 0;
+            margin: -1px 0;
+            -webkit-box-decoration-break: clone;
+            box-decoration-break: clone;
             border-radius: 0;
         }
         .viz1-step.active .viz1-highlight {
