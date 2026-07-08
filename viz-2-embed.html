@@ -796,6 +796,7 @@
             font-family: 'Editor', Georgia, serif;
             font-size: 1.3rem;
             font-weight: 600;
+            line-height: 1.15; /* tighter header per Alden 6/16 */
             color: #1a1a1a;
             margin: 0 0 10px 0;
         }
@@ -1205,7 +1206,8 @@
         }
         /* Highlighted text in cards — background sweep */
         .viz1-highlight {
-            background: linear-gradient(to right, rgba(194, 113, 74, 0.25) 50%, transparent 50%);
+            /* BCJ brand yellow highlighter (#FFCF01), per Alden 6/16 */
+            background: linear-gradient(to right, rgba(255, 207, 1, 0.55) 50%, transparent 50%);
             background-size: 200% 100%;
             background-position: right;
             transition: background-position 0.6s ease 0.7s;
@@ -4092,13 +4094,14 @@
             var dragnetStartPositions = [];
             var dragnetPositionsCaptured = false;
 
+            // Cluster colors: BCJ brand dataviz palette (per Alden 6/16) — no green/orange
             var DRAGNET_CLUSTERS = [
-                { id: 'geo', label: 'Geolocation', color: '#a24a3c', angle: -Math.PI * 0.8, isGeo: true },
-                { id: 'bio', label: 'Biometrics', color: '#f97316', angle: -Math.PI * 0.1, earlyEntry: true },
-                { id: 'social', label: 'Social Media', color: '#549e6b', angle: -Math.PI * 0.4 },
-                { id: 'federal', label: 'Federal Databases', color: '#3d8c85', angle: Math.PI * 0.7 },
-                { id: 'state', label: 'State & Local Databases', color: '#4d8baf', angle: Math.PI * 0.15, earlyEntry: true },
-                { id: 'brokers', label: 'Data Brokers', color: '#b5713b', angle: Math.PI * 0.45 }
+                { id: 'geo', label: 'Geolocation', color: '#9E0B0F', angle: -Math.PI * 0.8, isGeo: true },
+                { id: 'bio', label: 'Biometrics', color: '#F69679', angle: -Math.PI * 0.1, earlyEntry: true },
+                { id: 'social', label: 'Social Media', color: '#FFCF01', angle: -Math.PI * 0.4 },
+                { id: 'federal', label: 'Federal Databases', color: '#3995B2', angle: Math.PI * 0.7 },
+                { id: 'state', label: 'State & Local Databases', color: '#9FCDE0', angle: Math.PI * 0.15, earlyEntry: true },
+                { id: 'brokers', label: 'Data Brokers', color: '#B0B0B0', angle: Math.PI * 0.45 }
             ];
 
             // Initialize cluster nodes (orbital style from mockup-1.5)
@@ -4462,22 +4465,22 @@
 
                     ctx.beginPath();
                     ctx.arc(cx, cy, Math.max(0, hubRadius + 4 + Math.sin(dragnetTime * 0.03) * 3), 0, Math.PI * 2);
-                    ctx.strokeStyle = 'rgba(219,108,55,' + (0.3 * centerScale) + ')';
+                    ctx.strokeStyle = 'rgba(237,28,36,' + (0.3 * centerScale) + ')';
                     ctx.lineWidth = 1;
                     ctx.stroke();
 
                     ctx.beginPath();
                     ctx.arc(cx, cy, hubRadius, 0, Math.PI * 2);
-                    ctx.fillStyle = '#db6c37';
+                    ctx.fillStyle = '#ED1C24';
                     ctx.fill();
 
-                    ctx.fillStyle = '#db6c37';
+                    ctx.fillStyle = '#ED1C24';
                     var isMobileHub = isMobileViewport();
                     ctx.font = (isMobileHub ? 'bold 11px' : 'bold 13px') + ' Benton Sans, ui-sans-serif, system-ui, sans-serif';
                     ctx.textAlign = 'center';
                     ctx.fillStyle = 'rgba(26,36,47,' + (centerScale * 0.9) + ')';
                     ctx.fillRect(cx - 75, cy + 24, 150, 36);
-                    ctx.fillStyle = '#db6c37';
+                    ctx.fillStyle = '#ED1C24';
                     ctx.fillText('DHS', cx, cy + 38);
                     ctx.fillText('Data Integration System', cx, cy + 52);
 
