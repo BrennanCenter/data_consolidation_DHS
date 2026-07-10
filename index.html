@@ -2715,6 +2715,17 @@
 
             if (!container || !mapEl || !canvas || !steps.length) return;
 
+            // Mobile viewports show a much narrower slice of ground at the same zoom
+            // level, so scenes framed for desktop read as over-zoomed on phones.
+            // Route every stage zoom through this: one level out on mobile restores
+            // roughly the desktop framing (ground width doubles per zoom -1).
+            // An optional second arg sets an explicit mobile zoom for scenes that
+            // need more than the default -1 (e.g. the home close-up).
+            function stageZoom(z, mobileZ) {
+                if (!isMobileViewport()) return z;
+                return mobileZ !== undefined ? mobileZ : z - 1;
+            }
+
             // Helper for smooth map transitions
             function isMapAtView(targetCenter, targetZoom) {
                 var currentZoom = map.getZoom();
@@ -2866,7 +2877,7 @@
                 container: 'viz1-map',
                 style: 'https://tiles.openfreemap.org/styles/positron',
                 center: toML(FOLEY_CENTER),
-                zoom: 16,
+                zoom: stageZoom(16),
                 pitch: 0,
                 bearing: 0,
                 interactive: false,
@@ -3114,6 +3125,15 @@
                 } else if (caret === 'right') {
                     lx = pixel.x - w - caretSize;
                     ly = pixel.y - h / 2;
+                }
+
+                // Optional per-label pixel nudge of the anchor. Used on mobile for the
+                // home step: the box centroid frames near the top edge, so drop the
+                // anchor down onto the lower part of the (tall) box — the label then
+                // sits lower and more central instead of hugging the top.
+                if (cfg.labelAnchorPx) {
+                    lx += cfg.labelAnchorPx[0];
+                    ly += cfg.labelAnchorPx[1];
                 }
 
                 var maxX = canvas.width - w - 5;
@@ -3825,6 +3845,8 @@
                 // scroll skipped 5. Step 4 re-applies its override after this runs.
                 POLYGONS['home'].lineAnchor = [0, 20];
                 POLYGONS['home'].lineTarget = null;
+                POLYGONS['home'].caretDir = 'down';
+                POLYGONS['home'].labelAnchorPx = null;
                 // Animate labels out when leaving step 5 (A Life Exposed) for step 6+
                 hideAllLabels(previousStage === 5 && stage >= 6);
                 // Force-clear any lingering SVG connector lines (fast scroll safety)
@@ -3891,11 +3913,11 @@
                         }
                         if (previousStage === 0 || previousStage === 1) {
                             // Ease to slightly pulled-back perspective
-                            map.easeTo({pitch: 50, bearing: -15, zoom: 16, duration: 1200});
+                            map.easeTo({pitch: 50, bearing: -15, zoom: stageZoom(16), duration: 1200});
                             drawStep1();
                         } else {
-                            if (!isMapAtView(FOLEY_CENTER, 16)) canvas.style.opacity = '0';
-                            smoothMapTransition(FOLEY_CENTER, 16, function() {
+                            if (!isMapAtView(FOLEY_CENTER, stageZoom(16))) canvas.style.opacity = '0';
+                            smoothMapTransition(FOLEY_CENTER, stageZoom(16), function() {
                                 canvas.style.opacity = '1';
                                 drawStep1();
                             }, {pitch: 50, bearing: -15, duration: 1200});
@@ -3906,8 +3928,8 @@
                     case 2: { // Video shrinks, fill fades, dashed outline traces, dot pulses — tilted close-up
                         showVideoSmall();
                         pulsingOutlineKey = null;
-                        if (!isMapAtView(FOLEY_CENTER, 18)) canvas.style.opacity = '0';
-                        smoothMapTransition(FOLEY_CENTER, 18, function() {
+                        if (!isMapAtView(FOLEY_CENTER, stageZoom(18))) canvas.style.opacity = '0';
+                        smoothMapTransition(FOLEY_CENTER, stageZoom(18), function() {
                             var cfg = POLYGONS['foley'];
                             var coords = cfg.coords;
                             var fillAlpha = 0.3;
@@ -4021,8 +4043,8 @@
                                 drawOutline('foley');
                             }
                         } else {
-                            if (!isMapAtView(FOLEY_CENTER, 18)) canvas.style.opacity = '0';
-                            smoothMapTransition(FOLEY_CENTER, 18, function() {
+                            if (!isMapAtView(FOLEY_CENTER, stageZoom(18))) canvas.style.opacity = '0';
+                            smoothMapTransition(FOLEY_CENTER, stageZoom(18), function() {
                                 clearCanvas();
                                 drawFoleyPoints();
                                 drawOutline('foley');
@@ -4037,11 +4059,16 @@
                         pulsingOutlineKey = null;
                         canvas.style.opacity = '0';
                         // Intermediate: zoom out to city view first for sense of scale
-                        map.flyTo({center: toML(NYC_CENTER), zoom: 13, pitch: 30, bearing: 0, duration: 1500, essential: true});
+                        map.flyTo({center: toML(NYC_CENTER), zoom: stageZoom(13), pitch: 30, bearing: 0, duration: 1500, essential: true});
                         map.once('idle', function() {
                             if (currentStage !== 4) return;
-                            // Then fly to Home
-                            smoothMapTransition(HOME_CENTER, 18, function() {
+                            // Then fly to Home. On mobile the narrative card owns the middle
+                            // of the screen, so nudge the camera center south (~200m) to
+                            // compose the home block into the visible strip above the card.
+                            var homeViewCenter = isMobileViewport()
+                                ? [HOME_CENTER[0] - 0.002, HOME_CENTER[1]]
+                                : HOME_CENTER;
+                            smoothMapTransition(homeViewCenter, stageZoom(18, 17), function() {
                             var cfg = POLYGONS['home'];
                             var coords = cfg.coords;
                             var traceT = 0;
@@ -4112,6 +4139,15 @@
                                         // into the dot cluster (HOME_CENTER), not the empty NE corner
                                         POLYGONS['home'].lineAnchor = [60, 55];
                                         POLYGONS['home'].lineTarget = [40.7800, -73.9528];
+                                        // On mobile the block composes near the top edge, so an
+                                        // above-the-box label risks clipping — place it to the
+                                        // RIGHT of the box (caret 'left' points back at it) and
+                                        // drop the anchor down onto the lower part of the box so
+                                        // the label sits lower, away from the top edge.
+                                        if (isMobileViewport()) {
+                                            POLYGONS['home'].caretDir = 'left';
+                                            POLYGONS['home'].labelAnchorPx = [0, 70];
+                                        }
                                         showLabel('home', 0);
                                     }
                                     startOutlinePulseAnimation('home', drawHomeHighlight);
@@ -4129,8 +4165,8 @@
                         hideLegend();
                         // (home-label defaults are restored centrally at the top of renderStage)
                         // Labels always hidden via styledata handler
-                        if (!isMapAtView(NYC_CENTER, 13)) canvas.style.opacity = '0';
-                        smoothMapTransition(NYC_CENTER, 13, function() {
+                        if (!isMapAtView(NYC_CENTER, stageZoom(13))) canvas.style.opacity = '0';
+                        smoothMapTransition(NYC_CENTER, stageZoom(13), function() {
                             clearCanvas();
                             drawAllPointsDim();
                             var isMobileStep5 = isMobileViewport();
@@ -4173,8 +4209,8 @@
                         pulsingOutlineKey = null;
                         stopDragnet();
                         // Labels always hidden via styledata handler
-                        if (!isMapAtView(NYC_CENTER, 13)) canvas.style.opacity = '0';
-                        smoothMapTransition(NYC_CENTER, 13, function() {
+                        if (!isMapAtView(NYC_CENTER, stageZoom(13))) canvas.style.opacity = '0';
+                        smoothMapTransition(NYC_CENTER, stageZoom(13), function() {
                             // No polygon fills — they'd interfere with the dimming cycle
                             hidePOIs();
                             if (isMobileViewport()) {
@@ -4326,7 +4362,7 @@
                         if (leg7Cctv) leg7Cctv.className = 'viz1-legend-item visible';
 
                         if (previousStage < 7) {
-                            map.jumpTo({center: toML(NYC_CENTER), zoom: 13});
+                            map.jumpTo({center: toML(NYC_CENTER), zoom: stageZoom(13)});
                         }
                         dragnetCapturePositions();
 
@@ -4347,7 +4383,7 @@
                         hideLegend();
 
                         if (previousStage < 7) {
-                            map.jumpTo({center: toML(NYC_CENTER), zoom: 13});
+                            map.jumpTo({center: toML(NYC_CENTER), zoom: stageZoom(13)});
                         }
                         dragnetCapturePositions();
 
@@ -4368,7 +4404,7 @@
                         hideLegend();
 
                         if (previousStage < 7) {
-                            map.jumpTo({center: toML(NYC_CENTER), zoom: 13});
+                            map.jumpTo({center: toML(NYC_CENTER), zoom: stageZoom(13)});
                         }
                         dragnetCapturePositions();
 
