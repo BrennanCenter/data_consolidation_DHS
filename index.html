@@ -687,6 +687,11 @@
             background: white;
             padding: 8px 16px;
         }
+        /* Pinned/iframe mode: the host page's sticky section nav floats over
+           the top of the iframe, so push the title down clear of it. */
+        body.viz1-pinned #viz1-title {
+            top: 76px;
+        }
         #viz1-map-overlay {
             position: absolute;
             top: 0;
@@ -847,7 +852,9 @@
         /* Protest video panel */
         #viz1-video-panel {
             position: absolute;
-            z-index: 1500;
+            /* Above #viz1-labels-overlay (9999): map annotations (POI names,
+               pin labels) must never paint over the photo/video card. */
+            z-index: 10000;
             border-radius: 0;
             overflow: hidden;
             box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
@@ -2647,6 +2654,9 @@
         var enabled = (typeof window.__VIZ1_PINNED__ !== 'undefined' && window.__VIZ1_PINNED__)
                       || /[?&]pinned=1\b/.test(window.location.search);
         if (!enabled) return;
+        // Flag pinned mode for CSS (e.g. title pushed below the host page's
+        // sticky nav, which floats over the top of the iframe).
+        document.body.classList.add('viz1-pinned');
         // Hide the scrollbar but keep programmatic scrolling working.
         var hideBar = document.createElement('style');
         hideBar.textContent = 'html{scrollbar-width:none}html::-webkit-scrollbar{width:0;height:0;display:none}';
