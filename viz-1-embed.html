@@ -886,6 +886,11 @@
             display: block;
             width: 100%;
             height: auto;
+            /* Safari: keep the video on its own compositing layer. Without this,
+               a video that starts playing while the panel is fading in from
+               opacity 0 can play without ever painting (invisible until a
+               forced recomposite, e.g. opening dev tools). */
+            transform: translateZ(0);
         }
         .viz1-video-caption {
             background: rgba(0, 0, 0, 0.7);
@@ -2262,7 +2267,7 @@
 
             <!-- Protest video panel (floating over map) -->
             <div id="viz1-video-panel">
-                <video id="viz1-video" muted playsinline loop preload="metadata">
+                <video id="viz1-video" muted playsinline loop preload="auto">
                     <source src="viz-1/protest-lns.mp4" type="video/mp4">
                 </video>
                 <div class="viz1-video-caption">Foley Square, January 30, 2026</div>
@@ -3098,32 +3103,42 @@
             }
 
             // === VIDEO HELPERS ===
-            function showVideoHero() {
-                if (!videoPanel || !videoEl) return;
-                videoPanel.classList.remove('small', 'large');
-                videoPanel.classList.add('hero');
-                videoEl.play().catch(function() {});
+            var videoHideTimer = null;
+
+            function playVideo() {
+                var p = videoEl.play();
+                if (p && p.then) p.then(function() {
+                    // Safari: a video that starts playing while its panel is
+                    // fading in from opacity 0 can play without ever painting.
+                    // Force a synchronous re-layout of the element once playback
+                    // actually starts (never visible — happens within one frame).
+                    videoEl.style.display = 'none';
+                    void videoEl.offsetHeight;
+                    videoEl.style.display = 'block';
+                }).catch(function() {});
             }
 
-            function showVideoLarge() {
+            function showVideo(sizeClass) {
                 if (!videoPanel || !videoEl) return;
-                videoPanel.classList.remove('small', 'hero');
-                videoPanel.classList.add('large');
-                videoEl.play().catch(function() {});
+                // Cancel any pending hide: its timer would strip the class we
+                // are about to add and pause the video (fast-scroll race).
+                clearTimeout(videoHideTimer);
+                videoPanel.style.opacity = '';
+                videoPanel.classList.remove('small', 'large', 'hero');
+                videoPanel.classList.add(sizeClass);
+                playVideo();
             }
 
-            function showVideoSmall() {
-                if (!videoPanel || !videoEl) return;
-                videoPanel.classList.remove('large', 'hero');
-                videoPanel.classList.add('small');
-                videoEl.play().catch(function() {});
-            }
+            function showVideoHero() { showVideo('hero'); }
+            function showVideoLarge() { showVideo('large'); }
+            function showVideoSmall() { showVideo('small'); }
 
             function hideVideo() {
                 if (!videoPanel || !videoEl) return;
                 // Fade out in place, then remove classes after invisible
                 videoPanel.style.opacity = '0';
-                setTimeout(function() {
+                clearTimeout(videoHideTimer);
+                videoHideTimer = setTimeout(function() {
                     videoPanel.classList.remove('large', 'small', 'hero');
                     videoPanel.style.opacity = '';
                     videoEl.pause();
