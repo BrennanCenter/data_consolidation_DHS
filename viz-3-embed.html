@@ -790,13 +790,13 @@
             display: none;
         }
         /* The intro primer is the one card that shows its title
-           ("Data Integration and Analysis in Practice" — per Emile 6/10) */
+           ("Data Integration and Analysis in Practice") */
         #viz1-intro-primer h2 {
             display: block;
             font-family: 'Editor', Georgia, serif;
             font-size: 1.3rem;
             font-weight: 600;
-            line-height: 1.15; /* tighter header per Alden 6/16 */
+            line-height: 1.15; /* tighter header */
             color: #1a1a1a;
             margin: 0 0 10px 0;
         }
@@ -1211,7 +1211,7 @@
         }
         /* Highlighted text in cards — background sweep */
         .viz1-highlight {
-            /* BCJ brand yellow highlighter (#FFCF01), per Alden 6/16 */
+            /* BCJ brand yellow highlighter (#FFCF01) */
             background: linear-gradient(to right, #FFCF01 50%, transparent 50%);
             background-size: 200% 100%;
             background-position: right;
@@ -1582,7 +1582,7 @@
         }
 
         /* Inline legend */
-        /* Left-aligned to match the vendor matrix header (per Emile 6/10) */
+        /* Left-aligned to match the vendor matrix header */
         .sankey-title-block {
             text-align: left;
             margin-bottom: 1.25rem;
@@ -1701,7 +1701,7 @@
             border-color: #6CBAD6;
             box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.15);
         }
-        /* Court-status border markers (per Emile 06-25): red = blocked by court,
+        /* Court-status border markers: red = blocked by court,
            amber = partially blocked. Brighter red than the #9E0B0F state-local dot
            so the two never read as the same thing. Overrides the is-new border. */
         .sankey-card.court-blocked { border-color: #dc2626; box-shadow: 0 0 0 2px rgba(220,38,38,0.18); }
@@ -3537,7 +3537,7 @@
                 var mapOverlay = document.getElementById('viz1-map-overlay');
 
                 switch (stage) {
-                    case 0: { // Intro splash — blank dark scene, primer card only (per Emile 6/10):
+                    case 0: { // Intro splash — blank dark scene, primer card only:
                         // no video, no "A Protest in New York" title until step 1.
                         hideVideo();
                         pulsingOutlineKey = null;
@@ -4085,7 +4085,7 @@
             var dragnetStartPositions = [];
             var dragnetPositionsCaptured = false;
 
-            // Cluster colors: BCJ brand dataviz palette (per Alden 6/16) — no green/orange
+            // Cluster colors: BCJ brand dataviz palette — no green/orange
             var DRAGNET_CLUSTERS = [
                 { id: 'geo', label: 'Geolocation', color: '#9E0B0F', angle: -Math.PI * 0.8, isGeo: true },
                 { id: 'bio', label: 'Biometrics', color: '#F69679', angle: -Math.PI * 0.1, earlyEntry: true },
@@ -4729,7 +4729,7 @@
                 { id: 'dmv', cat: 'state', label: 'State DMVs', title: 'Driver Records', size: 24, new2025: false, icon: 'car', data: 'Photos, Addresses, Reg info', status: 'Active (41 states)', destAgency: 'ICE; USCIS' }
             ];
 
-            // Map a source-box status string to a court-status border class (per Emile 06-25):
+            // Map a source-box status string to a court-status border class:
             // red border = blocked by court, amber = partially blocked.
             function courtClass(s){
                 if (/partially blocked/i.test(s || '')) return ' court-partial';
@@ -4737,7 +4737,7 @@
                 return '';
             }
 
-            // CBP sub-agency box removed 2026-06-08 per Emile — no specific datasets
+            // CBP sub-agency box removed — no specific datasets
             // currently routed to CBP in the diagram.
             const dhsAgencies = [
                 { id: 'ice', label: 'ICE', fullName: 'Immigration and Customs Enforcement', icon: 'siren' },
@@ -4824,7 +4824,7 @@
                 subContainer.appendChild(card);
             });
 
-            // DHS container box is intentionally not clickable (removed per Emile 6/8) —
+            // DHS container box is intentionally not clickable —
             // the ICE/USCIS component popups carry the inbound-source info instead.
 
             // Initialize Lucide icons
@@ -5110,7 +5110,7 @@
                     baseGroup.appendChild(pathBg);
 
                     // Animated dash overlay on all source-to-trunk flows (fades out toward bottom)
-                    // Was previously gated to is_new; per Emile 6/4 we apply to all and let the
+                    // Was previously gated to is_new; now applied to all flows, letting the
                     // gold "NEW" badge on the card carry the new-2025 signal.
                     const dashGradId = `dash-fade-${conn.source}-${conn.target}`;
                     const dashGrad = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
@@ -5305,8 +5305,8 @@
                     return dests.indexOf(ag.label.toUpperCase()) !== -1;
                 });
 
-                // Sources-flowing-in is the only panel section we keep for DHS components
-                // (per Emile 6/8 — How it Works / Current Status / Key Details all hidden).
+                // Sources-flowing-in is the only panel section kept for DHS components
+                // (How it Works / Current Status / Key Details all hidden).
                 document.getElementById("sankey-detail-data-label").textContent = 'Data Sources Flowing In';
                 if (inboundSources.length === 0) {
                     document.getElementById("sankey-detail-data").innerHTML =
@@ -5432,7 +5432,7 @@
                 var amt = contract.displayAmt || v.amt;
                 var html = '<div class="matrix-tt-title">' + v.name + '</div>';
                 // $0 means no direct contract (e.g. Flock's indirect access via
-                // local police) — say so instead of "Contract … for $0" (per Emile 6/10)
+                // local police) — say so instead of "Contract … for $0"
                 if (amt === '$0') {
                     html += '<div class="matrix-tt-desc">No contract with <strong>' + labelText + '</strong></div>';
                 } else {
@@ -5561,7 +5561,7 @@
                     categories.forEach(function(cat) {
                         var catVendors = vendors
                             .filter(function(v) { return v.cat === cat.id && vendorMatchesFilter(v); })
-                            .sort(function(a, b) { return a.name.localeCompare(b.name); }); // A-Z within each category (per Emile 6/10)
+                            .sort(function(a, b) { return a.name.localeCompare(b.name); }); // A-Z within each category
                         if (catVendors.length === 0) return; // hide empty category header when filtered
                         var catRow = document.createElement('tr');
                         catRow.className = 'matrix-cat-row';
