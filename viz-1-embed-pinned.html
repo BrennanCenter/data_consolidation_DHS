@@ -1494,6 +1494,11 @@
                 padding: 10px 14px;
                 font-size: 0.78rem;
             }
+            /* Pinned/iframe mode: the host page's sticky section nav floats over the
+               top of the iframe on mobile too, so push the top-anchored video and
+               legend clear of it (matches the title's pinned offset). */
+            body.viz1-pinned #viz1-video-panel.small { top: 76px; }
+            body.viz1-pinned #viz1-legend { top: 76px; }
             .viz1-legend-text {
                 font-size: 0.75rem;
             }
